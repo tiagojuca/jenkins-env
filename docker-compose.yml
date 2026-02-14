@@ -1,0 +1,50 @@
+services:
+  docker:
+    image: docker:dind
+    privileged: true
+    container_name: qjenkins-docker
+    networks:
+      - qjenkins
+    volumes:
+      - qjenkins-docker-certs:/certs/client
+    environment:
+      DOCKER_TLS_CERTDIR: /certs
+    ports:
+      - "2376:2376"
+
+  qjenkins:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: qjenkins:2.550-jdk21
+    container_name: qjenkins
+    depends_on:
+      - docker
+
+    restart: on-failure
+
+    networks:
+      - qjenkins
+
+    environment:
+      DOCKER_HOST: tcp://docker:2376
+      DOCKER_CERT_PATH: /certs/client
+      DOCKER_TLS_VERIFY: 1
+
+    ports:
+      - "8080:8080"
+      - "50000:50000"
+
+    volumes:
+      - qjenkins-data:/var/jenkins_home
+      - qjenkins-docker-certs:/certs/client:ro
+
+networks:
+  qjenkins:
+    name: qjenkins
+
+volumes:
+  qjenkins-data:
+    name: qjenkins-data
+  qjenkins-docker-certs:
+    name: qjenkins-docker-certs
