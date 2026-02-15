@@ -3,7 +3,8 @@ def SVN_BASE_URL = "https://svn.altoqi.com.br/svn/Eberick/"
 def CHECKOUT_FOLDER_PREFIX = "eb"
 def SCRIPTS_FOLDER = "Scripts"
 def APP_7ZA_REL_PATH = "${SCRIPTS_FOLDER}\\Utils\\7za.exe"
-def PYTHON_BUILD_COMMAND = "python build.py"
+def PYTHON_COMMAND = "python"
+def PYTHON_BUILD_SCRIPT = "build.py"
 def CMAKE_BINARY_DIR = "exeobj_cmake\\VC"
 def OWL_VERSION = "6.42"
 def BUNDLE_OUT_DIR = "D:\\jenkins\\jobs\\${env.JOB_NAME}\\builds\\${env.BUILD_NUMBER}"
@@ -20,7 +21,7 @@ def CMAKE_PROJECT_FOLDER = ""
 def CMAKE_INSTALL_FOLDER = ""
 def CMAKE_INSTALL_PREFIX = ""
 def CMAKE_PDB_OUTPUT_DIRECTORY = ""
-def PYTHON_BUILD_COMMAND_FLAGS = ""
+def PYTHON_BUILD_SCRIPT_FLAGS = ""
 def BUNDLE_BASENAME = ""
 def BUNDLE_NAME_EXEOBJ = ""
 def BUNDLE_NAME_PDBS = ""
@@ -64,44 +65,44 @@ pipeline {
         // Gera o comando de build com base nas opcoes selecionadas
         script {
           if (params.TIPO_BUILD == "DEBUG") {
-            PYTHON_BUILD_COMMAND_FLAGS += "-B=deb"
+            PYTHON_BUILD_SCRIPT_FLAGS += "-B=deb"
           } else {
-            PYTHON_BUILD_COMMAND_FLAGS += "-B=rel"
+            PYTHON_BUILD_SCRIPT_FLAGS += "-B=rel"
           }
 
-          PYTHON_BUILD_COMMAND_FLAGS += " -V=22 -TS=143"
+          PYTHON_BUILD_SCRIPT_FLAGS += " -V=22 -TS=143"
 
-          PYTHON_BUILD_COMMAND_FLAGS += " "
+          PYTHON_BUILD_SCRIPT_FLAGS += " "
           if (params.PROTECAO == "SL") {
-            PYTHON_BUILD_COMMAND_FLAGS += "-SL"
+            PYTHON_BUILD_SCRIPT_FLAGS += "-SL"
           } else if (params.PROTECAO == "DEMO") {
-            PYTHON_BUILD_COMMAND_FLAGS += "-D"
+            PYTHON_BUILD_SCRIPT_FLAGS += "-D"
           } else if (params.PROTECAO == "RMS") {
-            PYTHON_BUILD_COMMAND_FLAGS += "-R"
+            PYTHON_BUILD_SCRIPT_FLAGS += "-R"
           } else {
-            PYTHON_BUILD_COMMAND_FLAGS += "-O"
+            PYTHON_BUILD_SCRIPT_FLAGS += "-O"
           }
 
           if (params.TRADUCAO != "DESABILITADA") {
-            PYTHON_BUILD_COMMAND_FLAGS += " -T -Lang="
+            PYTHON_BUILD_SCRIPT_FLAGS += " -T -Lang="
             if (params.TRADUCAO == "EN-US") {
-              PYTHON_BUILD_COMMAND_FLAGS += "en-US"
+              PYTHON_BUILD_SCRIPT_FLAGS += "en-US"
             } else if (params.TRADUCAO == "ES-MX") {
-              PYTHON_BUILD_COMMAND_FLAGS += "es-MX"
+              PYTHON_BUILD_SCRIPT_FLAGS += "es-MX"
             } else {
-              PYTHON_BUILD_COMMAND_FLAGS += "pt-BR"
+              PYTHON_BUILD_SCRIPT_FLAGS += "pt-BR"
             }
           }
 
           if (params.COTIRE) {
-            PYTHON_BUILD_COMMAND_FLAGS += " -C"
+            PYTHON_BUILD_SCRIPT_FLAGS += " -C"
           }
 
           if (params.VLD) {
-            PYTHON_BUILD_COMMAND_FLAGS += " -L"
+            PYTHON_BUILD_SCRIPT_FLAGS += " -L"
           }
 
-          PYTHON_BUILD_COMMAND_FLAGS += " -P2"
+          PYTHON_BUILD_SCRIPT_FLAGS += " -P2"
         }
 
         // Monta nome da pasta a ser gerada pelo comando de build
@@ -243,15 +244,27 @@ pipeline {
     }
 
     // stage("Analisar") {
+
     //   steps {
-    //     echo CHECKOUT_PATH
+    //     echo "Analise Estatica"
     //   }
+
+    //   steps {
+    //     echo "Analise Resources"
+    //   }
+
+    //   script {
+    //     if (params.COTIRE) {
+    //       echo "Analise Cpps Isolados"
+    //     }
+    //   }
+
     // }
 
     stage("Construir") {
       steps {
         dir(SCRIPTS_PATH) {
-          bat "${PYTHON_BUILD_COMMAND} ${PYTHON_BUILD_COMMAND_FLAGS}"
+          bat "${PYTHON_COMMAND} ${PYTHON_BUILD_SCRIPT} ${PYTHON_BUILD_SCRIPT_FLAGS}"
         }
       }
     }
