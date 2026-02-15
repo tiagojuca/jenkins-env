@@ -1,17 +1,31 @@
+// Parametros de entrada que nao precisam ser configurados via UI, mudam raramente
 def SVN_BASE_URL = "https://svn.altoqi.com.br/svn/Eberick/"
-def CHECKOUT_FOLDER_PREFIX = "FontesEberick"
+def CHECKOUT_FOLDER_PREFIX = "eb"
 def SCRIPTS_FOLDER = "Scripts"
+def APP_7ZA_REL_PATH = "${SCRIPTS_FOLDER}\\Utils\\7za.exe"
+def PYTHON_BUILD_COMMAND = "python build.py"
 def CMAKE_BINARY_DIR = "exeobj_cmake\\VC"
 def OWL_VERSION = "6.42"
+def BUNDLE_OUT_DIR = "D:\\jenkins\\jobs\\${env.JOB_NAME}\\builds\\${env.BUILD_NUMBER}"
+def BUNDLE_PASSWD = "AltoQi12"
 
+// Variaveis de saida populadas nas etapas de configuracao e espelhamento do Pipeline
 def SVN_URL = ""
+def SVN_REVISION = ""
 def CHECKOUT_FOLDER = ""
 def CHECKOUT_PATH = ""
 def SCRIPTS_PATH = ""
+def APP_7ZA_PATH = ""
 def CMAKE_PROJECT_FOLDER = ""
 def CMAKE_INSTALL_FOLDER = ""
 def CMAKE_INSTALL_PREFIX = ""
+def CMAKE_PDB_OUTPUT_DIRECTORY = ""
 def PYTHON_BUILD_COMMAND_FLAGS = ""
+def BUNDLE_BASENAME = ""
+def BUNDLE_NAME_EXEOBJ = ""
+def BUNDLE_NAME_PDBS = ""
+def BUNDLE_PATH_EXEOBJ = ""
+def BUNDLE_PATH_PDBS = ""
 
 pipeline {
   agent any
@@ -24,6 +38,11 @@ pipeline {
     choice(name: "PROTECAO", choices: ["OAUTH", "RMS", "DEMO", "SL"], description: "Tipo de protecao")
     booleanParam(name: "COTIRE", defaultValue: true, description: "Compilar com Unity Build?")
     booleanParam(name: "VLD", defaultValue: false, description: "Compilar com Visual Leak Detector?")
+    booleanParam(name: "PDB", defaultValue: false, description: "Distribuir simbolos de depuracao MSVC?")
+  }
+
+  environment {
+    SERVER_PROTECAO = "http://aq000043:8080/"
   }
 
   stages {
@@ -39,6 +58,7 @@ pipeline {
           CHECKOUT_FOLDER = "${CHECKOUT_FOLDER_PREFIX}_${params.BRANCH_SVN}"
           CHECKOUT_PATH = "${env.WORKSPACE}\\${CHECKOUT_FOLDER}"
           SCRIPTS_PATH = "${CHECKOUT_PATH}\\${SCRIPTS_FOLDER}"
+          APP_7ZA_PATH = "${CHECKOUT_PATH}\\${APP_7ZA_REL_PATH}"
         }
 
         // Gera o comando de build com base nas opcoes selecionadas
@@ -156,6 +176,9 @@ pipeline {
           }
 
           CMAKE_INSTALL_PREFIX = "${CHECKOUT_PATH}\\${CMAKE_BINARY_DIR}\\${CMAKE_INSTALL_FOLDER}"
+          CMAKE_PDB_OUTPUT_DIRECTORY = "${CMAKE_INSTALL_PREFIX}_pdb"
+
+          env.EXEOBJ = "${CMAKE_INSTALL_PREFIX}"
         }
 
       }
@@ -163,9 +186,59 @@ pipeline {
 
     stage("Espelhar") {
       steps {
+
         script {
           bat "svn checkout -r ${params.REVISAO_SVN} ${SVN_URL} ${CHECKOUT_FOLDER}"
+
+          if (params.REVISAO_SVN != "HEAD") {
+            SVN_REVISION = params.REVISAO_SVN
+          } else {
+            SVN_REVISION = bat(
+              script: """
+                @echo off
+                for /f "tokens=2" %%i in ('svn info "${CHECKOUT_PATH}" ^| findstr /R "^Revision:"') do @echo %%i
+              """,
+              returnStdout: true
+            ).trim()
+          }
         }
+
+        script {
+          BUNDLE_BASENAME += "${SVN_REVISION}"
+
+          if (params.BRANCH_SVN != "trunk") {
+            BUNDLE_BASENAME += "_${params.BRANCH_SVN}"
+          }
+
+          if (params.TIPO_BUILD == "DEBUG") {
+            BUNDLE_BASENAME += "_Debug"
+          }
+
+          if (params.VLD) {
+            BUNDLE_BASENAME += "_VLD"
+          }
+
+          if (params.TRADUCAO != "DESABILITADA") {
+            BUNDLE_BASENAME += "_Traducao"
+          }
+
+          if (params.PROTECAO == "SL") {
+            BUNDLE_BASENAME += "_SL"
+          } else if (params.PROTECAO == "DEMO") {
+            BUNDLE_BASENAME += "_Demo"
+          } else if (params.PROTECAO == "RMS") {
+            BUNDLE_BASENAME += "_RMS"
+          } else {
+            BUNDLE_BASENAME += "_Cloud"
+          }
+
+          BUNDLE_NAME_EXEOBJ = "exeobj_${BUNDLE_BASENAME}.zip"
+          BUNDLE_NAME_PDBS = "pdbs_${BUNDLE_BASENAME}.zip"
+
+          BUNDLE_PATH_EXEOBJ = "${BUNDLE_OUT_DIR}\\${BUNDLE_NAME_EXEOBJ}"
+          BUNDLE_PATH_PDBS = "${BUNDLE_OUT_DIR}\\${BUNDLE_NAME_PDBS}"
+        }
+
       }
     }
 
@@ -178,22 +251,35 @@ pipeline {
     stage("Construir") {
       steps {
         dir(SCRIPTS_PATH) {
-          bat "python build.py ${PYTHON_BUILD_COMMAND_FLAGS}"
+          bat "${PYTHON_BUILD_COMMAND} ${PYTHON_BUILD_COMMAND_FLAGS}"
         }
       }
     }
 
-    // stage("Envelopar") {
-    //   steps {
-    //     bat "${SCRIPTS_PATH}\\ProtegeEberick.bat"
-    //   }
-    // }
+    stage("Envelopar") {
+      steps {
+        dir(SCRIPTS_PATH) {
+          bat "${SCRIPTS_PATH}\\ProtegeEberick.bat ENVELOPE_THEMIDA HASH"
+          bat "type ${CMAKE_INSTALL_PREFIX}\\Eberick_themida.log"
+          bat "del ${CMAKE_INSTALL_PREFIX}\\Eberick_themida.log"
+          bat "del ${CMAKE_INSTALL_PREFIX}\\EberickAdmin_themida.log"
+          bat "del ${CMAKE_INSTALL_PREFIX}\\SecureEngineSDK64.dll"
+        }
+      }
+    }
 
-    // stage("Distribuir") {
-    //   steps {
-    //     echo "Distribuindo"
-    //   }
-    // }
+    stage("Distribuir") {
+      steps {
+        script {
+          def cmd = "${APP_7ZA_PATH} a -r -tzip -p${BUNDLE_PASSWD}"
+
+          bat "${cmd} ${BUNDLE_PATH_EXEOBJ} ${CMAKE_INSTALL_PREFIX}\\*"
+          if (params.PDB) {
+            bat "${cmd} ${BUNDLE_PATH_PDBS} ${CMAKE_PDB_OUTPUT_DIRECTORY}\\*"
+          }
+        }
+      }
+    }
 
     // stage("Testar") {
     //   steps {
